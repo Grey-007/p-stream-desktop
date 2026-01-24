@@ -6,6 +6,33 @@ const titlebar = document.getElementById('titlebar');
 const titlebarRight = document.querySelector('.titlebar__right');
 const appIcon = document.querySelector('.app-icon');
 
+// Store last theme color to restore after reload (persist across reloads)
+const THEME_COLOR_KEY = 'p-stream-titlebar-theme-color';
+
+// Function to apply theme color to titlebar
+const applyThemeColor = (color) => {
+  if (!titlebar) return;
+  if (color) {
+    titlebar.style.background = color;
+    titlebar.style.borderBottomColor = 'transparent';
+    // Persist theme color for reload
+    sessionStorage.setItem(THEME_COLOR_KEY, color);
+  } else {
+    // Reset to default if no color provided
+    titlebar.style.background = '';
+    titlebar.style.borderBottomColor = '';
+    sessionStorage.removeItem(THEME_COLOR_KEY);
+  }
+};
+
+// Restore theme color from sessionStorage after page loads
+const restoreThemeColor = () => {
+  const savedColor = sessionStorage.getItem(THEME_COLOR_KEY);
+  if (savedColor) {
+    applyThemeColor(savedColor);
+  }
+};
+
 // Platform-specific setup
 window.windowControls.onPlatformChanged((platform) => {
   const isMac = platform === 'darwin';
@@ -44,6 +71,17 @@ window.windowControls.onPlatformChanged((platform) => {
     // Windows: Keep default Windows-style icons
     if (titlebar) titlebar.classList.add('titlebar--windows');
   }
+
+  // After platform is set, wait for page to load then restore theme color
+  if (document.readyState === 'complete') {
+    // Page already loaded, restore immediately after a short delay
+    setTimeout(restoreThemeColor, 100);
+  } else {
+    // Wait for page to load before restoring theme color
+    window.addEventListener('load', () => {
+      setTimeout(restoreThemeColor, 100);
+    });
+  }
 });
 
 minimizeBtn.addEventListener('click', () => window.windowControls.minimize());
@@ -67,7 +105,5 @@ window.windowControls.onMaximizedChanged((isMaximized) => {
 });
 
 window.windowControls.onThemeColorChanged((color) => {
-  if (!titlebar || !color) return;
-  titlebar.style.background = color;
-  titlebar.style.borderBottomColor = 'transparent';
+  applyThemeColor(color);
 });

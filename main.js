@@ -145,7 +145,7 @@ function createWindow() {
     mainWindow.webContents.send('title-changed', mainWindow.getTitle());
   });
 
-  mainWindow.webContents.once('did-finish-load', () => {
+  mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send('title-changed', mainWindow.getTitle());
     mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
     mainWindow.webContents.send('platform-changed', platform);
