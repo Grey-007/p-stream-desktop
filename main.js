@@ -194,6 +194,27 @@ function createControlPanelWindow() {
 autoUpdater.autoDownload = false; // Don't auto-download, let user choose
 autoUpdater.autoInstallOnAppQuit = true; // Auto-install when app quits
 
+// Configure updater for GitHub releases
+// electron-updater automatically reads from package.json build.publish config
+// But we can explicitly configure it for better error handling
+if (app.isPackaged) {
+  try {
+    // electron-updater v6+ automatically uses package.json config
+    // But we can explicitly set it to ensure it works
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'p-stream',
+      repo: 'p-stream-desktop',
+    });
+    console.log('Auto-updater configured for GitHub releases');
+  } catch (error) {
+    console.error('Failed to configure auto-updater:', error);
+  }
+}
+
+// Track if we're doing a manual check to avoid duplicate dialogs
+let isManualCheck = false;
+
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {
   console.log('Checking for update...');
@@ -201,31 +222,36 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
-  dialog
-    .showMessageBox(BrowserWindow.getFocusedWindow() || null, {
-      type: 'info',
-      title: 'Update Available',
-      message: `A new version (${info.version}) of P-Stream is available!`,
-      detail: 'Would you like to download and install it now?',
-      buttons: ['Download', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        // Download button
-        autoUpdater.downloadUpdate();
 
-        // Show download progress notification
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'Downloading Update',
-            body: 'P-Stream update is being downloaded...',
-          }).show();
+  // Only show dialog for automatic checks, not manual checks from control panel
+  // Manual checks will show status in the control panel instead
+  if (!isManualCheck) {
+    dialog
+      .showMessageBox(BrowserWindow.getFocusedWindow() || null, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) of P-Stream is available!`,
+        detail: 'Would you like to download and install it now?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          // Download button
+          autoUpdater.downloadUpdate();
+
+          // Show download progress notification
+          if (Notification.isSupported()) {
+            new Notification({
+              title: 'Downloading Update',
+              body: 'P-Stream update is being downloaded...',
+            }).show();
+          }
         }
-      }
-    })
-    .catch(console.error);
+      })
+      .catch(console.error);
+  }
 });
 
 autoUpdater.on('update-not-available', (info) => {
@@ -348,19 +374,30 @@ app.whenReady().then(async () => {
         };
       }
 
+      // Set flag to indicate this is a manual check (prevents duplicate dialogs)
+      isManualCheck = true;
+      console.log('Manual update check initiated...');
+
       const result = await autoUpdater.checkForUpdates();
 
-      // Handle null result (can happen if update check is skipped)
+      // Handle null result (can happen if update check is skipped or no releases found)
       if (!result) {
+        console.log('Update check returned null - no releases found or update server not configured');
+        isManualCheck = false;
         return {
           updateAvailable: false,
           version: app.getVersion(),
-          message: 'Unable to check for updates at this time',
+          message: 'No updates available or update server not found. Make sure releases exist on GitHub.',
         };
       }
 
       // Check if updateInfo exists
       if (result.updateInfo) {
+        console.log('Update available:', result.updateInfo.version);
+        // Reset flag after a short delay to allow event handlers to process
+        setTimeout(() => {
+          isManualCheck = false;
+        }, 500);
         return {
           updateAvailable: true,
           version: result.updateInfo.version,
@@ -368,21 +405,44 @@ app.whenReady().then(async () => {
       }
 
       // No update available
+      console.log('No update available');
+      isManualCheck = false;
       return {
         updateAvailable: false,
         version: app.getVersion(),
       };
     } catch (error) {
+      // Always reset flag on error
+      isManualCheck = false;
+
       console.error('Manual update check failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+      });
 
       // Provide user-friendly error messages
       const errorMessage = error.message || error.toString().toLowerCase();
       let userMessage = 'Unable to check for updates';
 
-      if (errorMessage.includes('network') || errorMessage.includes('connection') || errorMessage.includes('fetch')) {
+      if (
+        errorMessage.includes('network') ||
+        errorMessage.includes('connection') ||
+        errorMessage.includes('fetch') ||
+        errorMessage.includes('enotfound') ||
+        errorMessage.includes('econnrefused')
+      ) {
         userMessage = 'Network error. Please check your internet connection.';
-      } else if (errorMessage.includes('not found') || errorMessage.includes('404')) {
-        userMessage = 'Update server not found.';
+      } else if (
+        errorMessage.includes('not found') ||
+        errorMessage.includes('404') ||
+        errorMessage.includes('no published releases') ||
+        errorMessage.includes('release not found')
+      ) {
+        userMessage = 'Update server not found. Make sure releases exist on GitHub with update metadata files.';
+      } else if (errorMessage.includes('403') || errorMessage.includes('unauthorized')) {
+        userMessage = 'Update server access denied. The repository may be private or requires authentication.';
       } else {
         userMessage = `Update check failed: ${error.message || 'Unknown error'}`;
       }
