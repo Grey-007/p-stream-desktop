@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld('controlPanel', {
   getVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdates: () => ipcRenderer.invoke('checkForUpdates'),
   downloadUpdate: () => ipcRenderer.invoke('downloadUpdate'),
+  isUpdateDownloaded: () => ipcRenderer.invoke('isUpdateDownloaded'),
   installUpdate: () => ipcRenderer.invoke('installUpdate'),
   resetApp: () => ipcRenderer.invoke('reset-app'),
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update-downloaded', (event, data) => callback(data));
+  },
 });

@@ -17,6 +17,10 @@ let store = null;
 // Control panel window reference
 let controlPanelWindow = null;
 
+// Track if update is downloaded and ready to install
+let updateDownloaded = false;
+let downloadedUpdateVersion = null;
+
 // BrowserView reference (for reset functionality)
 let mainBrowserView = null;
 
@@ -329,23 +333,36 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', (info) => {
   console.log('Update downloaded:', info.version);
-  dialog
-    .showMessageBox(BrowserWindow.getFocusedWindow() || null, {
-      type: 'info',
-      title: 'Update Downloaded',
-      message: `P-Stream ${info.version} has been downloaded!`,
-      detail: 'The update will be installed when you restart the application.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        // Restart Now button
-        autoUpdater.quitAndInstall();
-      }
-    })
-    .catch(console.error);
+  updateDownloaded = true;
+  downloadedUpdateVersion = info.version;
+
+  // Notify control panel if it's open
+  if (controlPanelWindow && !controlPanelWindow.isDestroyed()) {
+    controlPanelWindow.webContents.send('update-downloaded', {
+      version: info.version,
+    });
+  }
+
+  // Only show dialog for automatic checks (not manual checks from control panel)
+  if (!isManualCheck) {
+    dialog
+      .showMessageBox(BrowserWindow.getFocusedWindow() || null, {
+        type: 'info',
+        title: 'Update Downloaded',
+        message: `P-Stream ${info.version} has been downloaded!`,
+        detail: 'The update will be installed when you restart the application.',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          // Restart Now button
+          autoUpdater.quitAndInstall();
+        }
+      })
+      .catch(console.error);
+  }
 });
 
 rpc.on('ready', () => {
@@ -536,6 +553,14 @@ app.whenReady().then(async () => {
     }
   });
 
+  // IPC handler for checking if update is downloaded
+  ipcMain.handle('isUpdateDownloaded', () => {
+    return {
+      downloaded: updateDownloaded,
+      version: downloadedUpdateVersion,
+    };
+  });
+
   // IPC handler for installing updates (restart and install)
   ipcMain.handle('installUpdate', async () => {
     try {
@@ -546,12 +571,30 @@ app.whenReady().then(async () => {
         };
       }
 
-      console.log('Installing update and restarting...');
-      autoUpdater.quitAndInstall();
+      if (!updateDownloaded) {
+        return {
+          success: false,
+          error: 'Update is not downloaded yet. Please wait for download to complete.',
+        };
+      }
 
+      console.log('Installing update and restarting...');
+      console.log('Update downloaded version:', downloadedUpdateVersion);
+      console.log('Calling quitAndInstall - app will restart and install update');
+
+      // quitAndInstall will:
+      // 1. Quit the application immediately
+      // 2. Run the installer (with UI since isSilent=false)
+      // 3. Restart the app after installation (since isForceRunAfter=true)
+      // Note: This call is synchronous and will cause the app to quit immediately
+      // The app will close, install the update, and then restart automatically
+      autoUpdater.quitAndInstall(false, true); // false = isSilent (show installer UI), true = isForceRunAfter (restart app)
+
+      // This return may not execute since quitAndInstall quits the app immediately
+      // But we return it anyway for the IPC call
       return {
         success: true,
-        message: 'Installing update...',
+        message: 'Installing update and restarting...',
       };
     } catch (error) {
       console.error('Failed to install update:', error);

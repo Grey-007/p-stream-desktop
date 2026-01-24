@@ -35,6 +35,16 @@ toggle.addEventListener('change', async (event) => {
 // Track update state
 let updateAvailable = false;
 let updateVersion = null;
+let updateDownloaded = false;
+
+// Listen for update download completion
+window.controlPanel.onUpdateDownloaded((data) => {
+  console.log('Update downloaded event received:', data);
+  updateDownloaded = true;
+  versionText.textContent = `Download complete! Click to install v${data.version}`;
+  checkUpdatesBtn.textContent = 'Install & Restart';
+  checkUpdatesBtn.disabled = false;
+});
 
 // Handle update check/install button
 checkUpdatesBtn.addEventListener('click', async () => {
@@ -110,9 +120,20 @@ async function handleCheckForUpdates() {
 }
 
 async function handleInstallUpdate() {
+  // Check if update is already downloaded
+  const downloadStatus = await window.controlPanel.isUpdateDownloaded();
+  if (downloadStatus.downloaded) {
+    updateDownloaded = true;
+    versionText.textContent = `Download complete! Click to install v${downloadStatus.version}`;
+    checkUpdatesBtn.textContent = 'Install & Restart';
+    checkUpdatesBtn.disabled = false;
+    return;
+  }
+
   checkUpdatesBtn.disabled = true;
   checkUpdatesBtn.textContent = 'Downloading...';
   versionText.textContent = 'Downloading update...';
+  updateDownloaded = false;
 
   try {
     // Start download
@@ -124,22 +145,15 @@ async function handleInstallUpdate() {
       setTimeout(() => {
         versionText.textContent = `Update available: v${updateVersion}`;
       }, 3000);
+      checkUpdatesBtn.disabled = false;
       return;
     }
 
     // Download started - show progress
+    // The update-downloaded event will be handled by the listener above
     versionText.textContent = 'Downloading update...';
     checkUpdatesBtn.textContent = 'Downloading...';
     checkUpdatesBtn.disabled = true;
-
-    // Note: The actual download completion will be detected when user clicks again
-    // For now, we'll enable the button after a delay and let them check status
-    // In a real scenario, we'd listen for download-progress events via IPC
-    setTimeout(() => {
-      versionText.textContent = `Download complete! Click to install v${updateVersion}`;
-      checkUpdatesBtn.textContent = 'Install & Restart';
-      checkUpdatesBtn.disabled = false;
-    }, 3000);
   } catch (error) {
     console.error('Failed to download update:', error);
     versionText.textContent = 'Error downloading update';
@@ -152,6 +166,15 @@ async function handleInstallUpdate() {
 }
 
 async function handleRestartAndInstall() {
+  // Verify update is downloaded before installing
+  const downloadStatus = await window.controlPanel.isUpdateDownloaded();
+  if (!downloadStatus.downloaded) {
+    versionText.textContent = 'Update not downloaded yet. Please wait...';
+    checkUpdatesBtn.textContent = 'Install & Restart';
+    checkUpdatesBtn.disabled = false;
+    return;
+  }
+
   checkUpdatesBtn.disabled = true;
   checkUpdatesBtn.textContent = 'Installing...';
   versionText.textContent = 'Installing update and restarting...';
@@ -163,9 +186,10 @@ async function handleRestartAndInstall() {
       checkUpdatesBtn.textContent = 'Install & Restart';
       checkUpdatesBtn.disabled = false;
     } else {
-      versionText.textContent = 'Installing update...';
+      versionText.textContent = 'Installing update and restarting...';
       checkUpdatesBtn.textContent = 'Installing...';
-      // App will restart automatically via quitAndInstall()
+      // quitAndInstall() will restart the app and install the update
+      // The app will close and restart automatically
     }
   } catch (error) {
     console.error('Failed to install update:', error);
