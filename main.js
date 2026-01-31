@@ -225,6 +225,72 @@ function createWindow() {
     streamUrl.startsWith('http://') || streamUrl.startsWith('https://') ? streamUrl : `https://${streamUrl}/`;
   view.webContents.loadURL(fullUrl);
 
+  // Show error page when the main document fails to load (e.g. no connection, DNS)
+  view.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    // -3 = ERR_ABORTED (user navigated away or cancelled) — don't show error page
+    if (errorCode === -3) return;
+    const displayUrl = validatedURL || fullUrl;
+    const errorHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: #1f2025;
+              color: #e4e4e7;
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 24px;
+              text-align: center;
+            }
+            .error-box {
+              max-width: 420px;
+            }
+            h1 {
+              font-size: 18px;
+              font-weight: 600;
+              margin-bottom: 12px;
+              color: #f4f4f5;
+            }
+            p {
+              font-size: 14px;
+              line-height: 1.5;
+              color: #a1a1aa;
+            }
+            .url {
+              word-break: break-all;
+              color: #6366f1;
+              margin: 12px 0;
+              font-size: 13px;
+            }
+            .hint {
+              margin-top: 16px;
+              font-size: 13px;
+              color: #71717a;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="error-box">
+            <h1>Failed to connect</h1>
+            <p>Could not load the page.</p>
+            <p class="url">${displayUrl.replace(/</g, '&lt;')}</p>
+            <p class="hint">Try changing your DNS settings or use a VPN.</p>
+            <p class="hint" style="margin-top: 8px;">You can reload with Ctrl+R (or Cmd+R on Mac).</p>
+          </div>
+        </body>
+      </html>
+    `;
+    view.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+  });
+
   // Helper function to extract domain from URL
   function getDomainFromUrl(url) {
     try {
