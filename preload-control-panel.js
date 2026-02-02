@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld('controlPanel', {
   restartApp: () => ipcRenderer.invoke('restartApp'),
   resetApp: () => ipcRenderer.invoke('reset-app'),
   uninstallApp: () => ipcRenderer.invoke('uninstall-app'),
+  // WARP VPN
+  getWarpEnabled: () => ipcRenderer.invoke('get-warp-enabled'),
+  setWarpEnabled: (enabled) => ipcRenderer.invoke('set-warp-enabled', enabled),
+  getWarpStatus: () => ipcRenderer.invoke('get-warp-status'),
 });

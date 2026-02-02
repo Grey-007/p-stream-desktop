@@ -9,7 +9,15 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['main.js', 'ipc-handlers.js', 'storage.js', 'test.js', 'discord-rpc.js', 'auto-updater.js'],
+    files: [
+      'main.js',
+      'ipc-handlers.js',
+      'storage.js',
+      'test.js',
+      'discord-rpc.js',
+      'auto-updater.js',
+      'warp-proxy.js',
+    ],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',

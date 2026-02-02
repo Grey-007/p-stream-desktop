@@ -5,6 +5,7 @@ const { autoUpdater } = require('electron-updater');
 const SimpleStore = require('./storage');
 const discordRPC = require('./discord-rpc');
 const { checkAndAutoUpdate } = require('./auto-updater');
+const warpProxy = require('./warp-proxy');
 
 // Settings store (will be initialized when app is ready)
 let store = null;
@@ -1100,18 +1101,10 @@ ipcMain.handle('set-stream-url', async (event, url) => {
   // Validate and normalize URL
   let normalizedUrl = url.trim();
 
-  // Remove protocol if present (we'll add it when loading)
-  if (normalizedUrl.startsWith('http://')) {
-    normalizedUrl = normalizedUrl.replace('http://', '');
-  }
-  if (normalizedUrl.startsWith('https://')) {
-    normalizedUrl = normalizedUrl.replace('https://', '');
-  }
-
-  // Remove trailing slash
+  // Remove trailing slash only (keep protocol and path)
   normalizedUrl = normalizedUrl.replace(/\/$/, '');
 
-  // Basic validation - should be a valid domain
+  // Basic validation - should be a valid domain or URL
   if (!normalizedUrl || normalizedUrl.length === 0) {
     throw new Error('URL cannot be empty');
   }
@@ -1120,7 +1113,11 @@ ipcMain.handle('set-stream-url', async (event, url) => {
 
   // Reload the BrowserView with the new URL if it exists
   if (mainBrowserView && mainBrowserView.webContents) {
-    const fullUrl = `https://${normalizedUrl}/`;
+    // Add https:// if no protocol specified
+    const fullUrl =
+      normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://')
+        ? normalizedUrl
+        : `https://${normalizedUrl}/`;
     mainBrowserView.webContents.loadURL(fullUrl);
   }
 
@@ -1164,6 +1161,55 @@ ipcMain.handle('reset-app', async () => {
     console.error('Error resetting app:', error);
     return { success: false, error: error.message };
   }
+});
+
+// WARP VPN IPC handlers
+ipcMain.handle('get-warp-enabled', () => {
+  return warpProxy.isWarpProxyEnabled();
+});
+
+ipcMain.handle('get-warp-status', () => {
+  const enabled = warpProxy.isWarpProxyEnabled();
+  if (enabled) {
+    return {
+      enabled: true,
+      proxyHost: warpProxy.PROXY_HOST,
+      proxyPort: warpProxy.PROXY_PORT,
+    };
+  }
+  return { enabled: false };
+});
+
+ipcMain.handle('set-warp-enabled', async (event, enabled) => {
+  try {
+    if (enabled) {
+      const result = await warpProxy.enableWarpProxy();
+      if (result.success) {
+        // Set proxy for the BrowserView session
+        if (mainBrowserView && mainBrowserView.webContents) {
+          const proxyConfig = warpProxy.getProxyConfig();
+          await mainBrowserView.webContents.session.setProxy(proxyConfig);
+        }
+        return { success: true, proxyHost: result.proxyHost, proxyPort: result.proxyPort };
+      }
+      return { success: false, error: result.error };
+    } else {
+      warpProxy.disableWarpProxy();
+      // Clear proxy for the BrowserView session
+      if (mainBrowserView && mainBrowserView.webContents) {
+        await mainBrowserView.webContents.session.setProxy({ proxyRules: '' });
+      }
+      return { success: true };
+    }
+  } catch (error) {
+    console.error('Failed to toggle WARP proxy:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Cleanup WARP proxy on app quit
+app.on('before-quit', () => {
+  warpProxy.cleanup();
 });
 
 app.on('window-all-closed', function () {

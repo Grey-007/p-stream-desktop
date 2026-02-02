@@ -6,6 +6,8 @@ const resetAppBtn = document.getElementById('reset-app-btn');
 const uninstallAppBtn = document.getElementById('uninstall-app-btn');
 const streamUrlInput = document.getElementById('stream-url-input');
 const saveUrlBtn = document.getElementById('save-url-btn');
+const warpToggle = document.getElementById('warp-toggle');
+const warpStatus = document.getElementById('warp-status');
 
 // Load initial state
 async function loadState() {
@@ -29,6 +31,15 @@ async function loadState() {
     streamUrlInput.value = url;
   } catch (error) {
     console.error('Failed to load stream URL:', error);
+  }
+
+  // Load WARP VPN state
+  try {
+    const warpEnabled = await window.controlPanel.getWarpEnabled();
+    warpToggle.checked = warpEnabled;
+    updateWarpStatus();
+  } catch (error) {
+    console.error('Failed to load WARP state:', error);
   }
 
   // Check if we're in development mode and show releases page button
@@ -57,6 +68,52 @@ toggle.addEventListener('change', async (event) => {
     console.error('Failed to update Discord RPC state:', error);
     // Revert toggle on error
     toggle.checked = !event.target.checked;
+  }
+});
+
+// Update WARP status display
+async function updateWarpStatus() {
+  try {
+    const status = await window.controlPanel.getWarpStatus();
+    if (status.enabled) {
+      warpStatus.textContent = `Connected via ${status.proxyHost}:${status.proxyPort}`;
+      warpStatus.style.color = '#4ade80';
+    } else if (status.error) {
+      warpStatus.textContent = `Error: ${status.error}`;
+      warpStatus.style.color = '#f87171';
+    } else {
+      warpStatus.textContent = 'Disabled';
+      warpStatus.style.color = '#a1a1aa';
+    }
+  } catch (error) {
+    warpStatus.textContent = '';
+  }
+}
+
+// Handle WARP toggle change
+warpToggle.addEventListener('change', async (event) => {
+  const enabling = event.target.checked;
+  warpToggle.disabled = true;
+  warpStatus.textContent = enabling ? 'Connecting...' : 'Disconnecting...';
+  warpStatus.style.color = '#fbbf24';
+
+  try {
+    const result = await window.controlPanel.setWarpEnabled(enabling);
+    if (result.success) {
+      warpToggle.checked = enabling;
+      await updateWarpStatus();
+    } else {
+      warpToggle.checked = !enabling;
+      warpStatus.textContent = result.error || 'Failed';
+      warpStatus.style.color = '#f87171';
+    }
+  } catch (error) {
+    console.error('Failed to update WARP state:', error);
+    warpToggle.checked = !enabling;
+    warpStatus.textContent = error.message || 'Failed';
+    warpStatus.style.color = '#f87171';
+  } finally {
+    warpToggle.disabled = false;
   }
 });
 
@@ -202,12 +259,8 @@ saveUrlBtn.addEventListener('click', async () => {
     // Validate URL format
     new URL(formattedUrl);
 
-    // Extract just the domain if full URL was provided, or use as-is if it's just a domain
-    let urlToSave = url;
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      const urlObj = new URL(url);
-      urlToSave = urlObj.hostname;
-    }
+    // Keep the full URL (including path) - just use as entered
+    const urlToSave = url;
 
     saveUrlBtn.disabled = true;
     saveUrlBtn.textContent = 'Saving...';
