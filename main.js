@@ -1,6 +1,6 @@
 const { app, BrowserWindow, BrowserView, session, ipcMain, dialog, globalShortcut, shell } = require('electron');
 const path = require('path');
-const { handlers, setupInterceptors } = require('./ipc-handlers');
+const { handlers } = require('./ipc-handlers');
 const { autoUpdater } = require('electron-updater');
 const SimpleStore = require('./storage');
 const discordRPC = require('./discord-rpc');
@@ -21,13 +21,14 @@ function createWindow() {
   // Allow platform override via environment variable for previewing different platforms
   const platform = process.env.PLATFORM_OVERRIDE || process.platform;
   const isMac = platform === 'darwin';
+  const iconPath = path.join(__dirname, isMac ? 'app.icns' : 'logo.png');
 
   // Configure window based on platform
   const windowOptions = {
     width: 1300,
     height: 800,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'logo.png'),
+    icon: iconPath,
     backgroundColor: '#1f2025',
     fullscreenable: true,
     webPreferences: {
@@ -530,13 +531,14 @@ function createControlPanelWindow() {
     return;
   }
 
+  const isMac = (process.env.PLATFORM_OVERRIDE || process.platform) === 'darwin';
   controlPanelWindow = new BrowserWindow({
     width: 500,
     height: 400,
     minWidth: 400,
     minHeight: 300,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'logo.png'),
+    icon: path.join(__dirname, isMac ? 'app.icns' : 'logo.png'),
     backgroundColor: '#1f2025',
     webPreferences: {
       nodeIntegration: false,
@@ -723,14 +725,8 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Setup Network Interceptors (and add X-P-Stream-Client header for the configured stream URL only)
-  setupInterceptors(session.defaultSession, {
-    getStreamHostname: () => {
-      const streamUrl = store.get('streamUrl', 'pstream.mov');
-      const full =
-        streamUrl.startsWith('http://') || streamUrl.startsWith('https://') ? streamUrl : `https://${streamUrl}/`;
-      return new URL(full).hostname.replace(/^www\./, '');
-    },
+  ipcMain.handle('openControlPanel', () => {
+    createControlPanelWindow();
   });
 
   createWindow();

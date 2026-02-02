@@ -1,7 +1,7 @@
 {
   "name": "p-stream-desktop",
   "productName": "P-Stream",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Desktop app for pstream.mov",
   "author": "P-Stream",
   "main": "main.js",
@@ -56,12 +56,19 @@
     ],
     "mac": {
       "category": "public.app-category.entertainment",
-      "icon": "logo.png"
+      "icon": "app.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "strictVerify": false
     },
     "win": {
       "icon": "logo.png",
-      "target": "nsis",
-      "verifyUpdateCodeSignature": false,
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "requestedExecutionLevel": "asInvoker",
       "executableName": "P-Stream"
     },
