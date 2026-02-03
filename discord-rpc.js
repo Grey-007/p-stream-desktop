@@ -15,6 +15,10 @@ const ACTIVITY_TYPE_WATCHING = 3;
  */
 function setActivityRaw(args) {
   if (!rpc || typeof rpc.request !== 'function') return Promise.resolve();
+  if (!rpcReady) {
+    attemptLogin();
+    return Promise.resolve();
+  }
 
   let timestamps;
   if (args.startTimestamp != null || args.endTimestamp != null) {
@@ -58,13 +62,66 @@ function setActivityRaw(args) {
       pid: process.pid,
       activity,
     })
-    .catch(console.error);
+    .catch((error) => {
+      rpcReady = false;
+      logRpcError('request', error);
+    });
 }
 
 // Store current media metadata for Discord RPC
 let currentMediaMetadata = null;
 let currentActivityTitle = null;
 let store = null;
+let rpcReady = false;
+let loginInFlight = false;
+let lastLoginAttempt = 0;
+const LOGIN_RETRY_MS = 10000;
+let lastRpcErrorLog = 0;
+const RPC_ERROR_LOG_MS = 60000;
+
+function logRpcError(context, error) {
+  const message = error?.message ? String(error.message) : String(error);
+  if (message.toLowerCase().includes('could not connect')) return;
+
+  const now = Date.now();
+  if (now - lastRpcErrorLog < RPC_ERROR_LOG_MS) return;
+  lastRpcErrorLog = now;
+  console.warn(`Discord RPC ${context} failed:`, error);
+}
+
+function attemptLogin() {
+  if (!rpc || typeof rpc.login !== 'function') return Promise.resolve(false);
+  if (loginInFlight) return Promise.resolve(false);
+
+  const now = Date.now();
+  if (now - lastLoginAttempt < LOGIN_RETRY_MS) return Promise.resolve(false);
+
+  loginInFlight = true;
+  lastLoginAttempt = now;
+
+  return rpc
+    .login({ clientId })
+    .then(() => {
+      loginInFlight = false;
+      return true;
+    })
+    .catch((error) => {
+      loginInFlight = false;
+      rpcReady = false;
+      logRpcError('login', error);
+      return false;
+    });
+}
+
+function clearActivitySafe() {
+  if (!rpc || typeof rpc.clearActivity !== 'function') return Promise.resolve();
+  if (!rpcReady) return Promise.resolve();
+
+  return rpc.clearActivity().catch((error) => {
+    rpcReady = false;
+    logRpcError('clear activity', error);
+  });
+}
 
 function getStreamUrlForRPC() {
   if (!store) return 'https://pstream.mov/';
@@ -109,7 +166,7 @@ async function setActivity(title, mediaMetadata = null) {
   if (!rpc) return;
 
   if (store && !store.get('discordRPCEnabled', true)) {
-    rpc.clearActivity().catch(console.error);
+    await clearActivitySafe();
     return;
   }
 
@@ -152,6 +209,8 @@ function initialize(settingsStore) {
   // Set up ready handler
   rpc.on('ready', () => {
     console.log('Discord RPC started');
+    rpcReady = true;
+    loginInFlight = false;
     // Only set activity if RPC is enabled (store might not be initialized yet)
     if (!store || store.get('discordRPCEnabled', true)) {
       setActivity(currentActivityTitle, currentMediaMetadata);
@@ -159,7 +218,7 @@ function initialize(settingsStore) {
   });
 
   // Login to Discord RPC
-  rpc.login({ clientId }).catch(console.error);
+  attemptLogin();
 
   // Register IPC handlers
   ipcMain.handle('get-discord-rpc-enabled', () => {
@@ -178,9 +237,7 @@ function initialize(settingsStore) {
       await setActivity(currentActivityTitle, currentMediaMetadata);
     } else {
       // Clear activity if disabled
-      if (rpc) {
-        rpc.clearActivity().catch(console.error);
-      }
+      await clearActivitySafe();
     }
 
     return true;
