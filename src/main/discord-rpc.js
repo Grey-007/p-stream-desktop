@@ -134,11 +134,23 @@ function getStreamUrlForRPC() {
  * Shows: "The Simpsons S5 E5: Treehouse of Horror IV" (artist + title, where title is like "S5 E5: Episode Name")
  * Movies/single: just the title
  */
-function getActivityNameFromMedia(mediaMetadata) {
+function getCurrentMediaTitle(mediaMetadata) {
   if (!mediaMetadata?.title) return 'P-Stream';
   const title = mediaMetadata.title;
   const artist = mediaMetadata.artist;
   return artist ? `${artist} - ${title}` : title;
+}
+
+/**
+ * Build the activity details (substatus in Discord) from media metadata.
+ * Shows: "The Simpsons" (artist)
+ * Movies/single: just the title
+ */
+function getActivityNameFromMedia(mediaMetadata) {
+  if (!mediaMetadata?.title) return 'P-Stream';
+  const title = mediaMetadata.title;
+  const artist = mediaMetadata.artist;
+  return artist ? artist : title;
 }
 
 /**
@@ -169,10 +181,13 @@ async function setActivity(title, mediaMetadata = null) {
     await clearActivitySafe();
     return;
   }
+  console.log(mediaMetadata);
 
-  if (!mediaMetadata || !mediaMetadata.title) {
+  // If no media metadata, show default browsing activity
+  if (!mediaMetadata) {
     setActivityRaw({
-      details: title && title !== 'P-Stream' ? `Watching: ${title}` : 'P-Stream',
+      details: 'P-Stream',
+      state: 'Browsing',
       startTimestamp: new Date(),
       largeImageKey: 'logo',
       largeImageText: 'P-Stream',
@@ -184,20 +199,30 @@ async function setActivity(title, mediaMetadata = null) {
 
   const activity = {
     name: getActivityNameFromMedia(mediaMetadata),
-    details: 'Watching: ' + (mediaMetadata.artist ? mediaMetadata.artist + ' ' : '') + mediaMetadata.title,
+    details: getCurrentMediaTitle(mediaMetadata),
+    state: 'Loading...',
     startTimestamp: new Date(),
     largeImageKey: mediaMetadata.poster || 'logo',
     largeImageText: mediaMetadata.artist || mediaMetadata.title || 'P-Stream',
+    smallImageKey: 'logo_no_bg',
+    smallImageText: 'P-Stream',
     instance: false,
     buttons: [{ label: 'Use P-Stream', url: getStreamUrlForRPC() }],
   };
 
-  const [startTimestamp, endTimestamp] = getTimestampsFromMediaMetadata(mediaMetadata);
-  if (startTimestamp != null) {
-    activity.startTimestamp = startTimestamp;
-  }
-  if (endTimestamp != null) {
-    activity.endTimestamp = endTimestamp;
+  if (mediaMetadata.isPlaying) {
+    const [startTimestamp, endTimestamp] = getTimestampsFromMediaMetadata(mediaMetadata);
+    if (startTimestamp != null) {
+      activity.startTimestamp = startTimestamp;
+    }
+    if (endTimestamp != null) {
+      activity.endTimestamp = endTimestamp;
+    }
+    activity.state = 'Watching';
+  } else if (mediaMetadata.isPlaying === false && mediaMetadata.currentTime) {
+    activity.startTimestamp = new Date();
+    activity.endTimestamp = undefined;
+    activity.state = 'Paused';
   }
 
   setActivityRaw(activity);
@@ -245,6 +270,7 @@ function initialize(settingsStore) {
 
   ipcMain.handle('updateMediaMetadata', async (event, data) => {
     try {
+      //console.log(data);
       const hasMetadata = data?.metadata && (data.metadata.title || data.metadata.artist);
       const hasProgress = data?.progress && (data.progress.currentTime != null || data.progress.duration != null);
 
@@ -288,7 +314,10 @@ function initialize(settingsStore) {
         });
       }
 
-      if (currentMediaMetadata.title) {
+      // If we have at least title and duration, update the activity; otherwise clear metadata
+      // Sometimes we get incomplete updates (e.g., only title but no duration)
+      // For that reason, we require both title and duration to show activity
+      if (currentMediaMetadata.title && currentMediaMetadata.duration) {
         await setActivity(currentActivityTitle, currentMediaMetadata);
       } else {
         currentMediaMetadata = null;
