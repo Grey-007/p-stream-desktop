@@ -13,4 +13,9 @@ contextBridge.exposeInMainWorld('settings', {
   checkForUpdates: () => ipcRenderer.invoke('checkForUpdates'),
   installUpdate: () => ipcRenderer.invoke('installUpdate'),
   openReleasesPage: () => ipcRenderer.invoke('openReleasesPage'),
+  // Stream URL, reset, uninstall
+  getStreamUrl: () => ipcRenderer.invoke('get-stream-url'),
+  setStreamUrl: (url) => ipcRenderer.invoke('set-stream-url', url),
+  resetApp: () => ipcRenderer.invoke('reset-app'),
+  uninstallApp: () => ipcRenderer.invoke('uninstall-app'),
 });

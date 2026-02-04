@@ -4,6 +4,10 @@ const discordToggle = document.getElementById('discord-rpc-toggle');
 const versionText = document.getElementById('version-text');
 const checkUpdatesBtn = document.getElementById('check-updates-btn');
 const updateNowBtn = document.getElementById('update-now-btn');
+const streamUrlInput = document.getElementById('stream-url-input');
+const saveUrlBtn = document.getElementById('save-url-btn');
+const resetAppBtn = document.getElementById('reset-app-btn');
+const uninstallAppBtn = document.getElementById('uninstall-app-btn');
 
 // Load initial state
 async function loadState() {
@@ -31,6 +35,14 @@ async function loadState() {
   } catch (error) {
     console.error('Failed to load version:', error);
     versionText.textContent = 'Unknown';
+  }
+
+  // Load stream URL
+  try {
+    const url = await window.settings.getStreamUrl();
+    streamUrlInput.value = url;
+  } catch (error) {
+    console.error('Failed to load stream URL:', error);
   }
 
   // Check if we're in development mode
@@ -66,6 +78,7 @@ async function updateWarpStatus() {
       warpStatus.style.color = '#a1a1aa';
     }
   } catch (error) {
+    console.error('Failed to update WARP status:', error);
     warpStatus.textContent = '';
   }
 }
@@ -221,6 +234,107 @@ async function handleUpdateNow() {
     checkUpdatesBtn.disabled = false;
   }
 }
+
+// Save URL
+saveUrlBtn.addEventListener('click', async () => {
+  const url = streamUrlInput.value.trim();
+  if (!url) {
+    alert('Please enter a valid URL');
+    return;
+  }
+  try {
+    let formattedUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      formattedUrl = `https://${url}`;
+    }
+    new URL(formattedUrl);
+    const urlToSave = url;
+    saveUrlBtn.disabled = true;
+    saveUrlBtn.textContent = 'Saving...';
+    try {
+      await window.settings.setStreamUrl(urlToSave);
+      saveUrlBtn.textContent = 'Saved!';
+      setTimeout(() => {
+        saveUrlBtn.textContent = 'Save';
+        saveUrlBtn.disabled = false;
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to save stream URL:', error);
+      saveUrlBtn.textContent = 'Save';
+      saveUrlBtn.disabled = false;
+      alert('Failed to save URL. Please try again.');
+    }
+  } catch {
+    alert('Please enter a valid URL or domain name');
+  }
+});
+
+streamUrlInput.addEventListener('keypress', (event) => {
+  if (event.key === 'Enter') saveUrlBtn.click();
+});
+
+// Reset app
+resetAppBtn.addEventListener('click', async () => {
+  const confirmed = confirm(
+    'Are you sure you want to reset the app? This will clear all local data and cookies. This action cannot be undone.',
+  );
+  if (!confirmed) return;
+  resetAppBtn.disabled = true;
+  resetAppBtn.textContent = 'Resetting...';
+  try {
+    await window.settings.resetApp();
+    resetAppBtn.textContent = 'Reset Complete';
+    alert('App has been reset successfully. The app will reload.');
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (error) {
+    console.error('Failed to reset app:', error);
+    resetAppBtn.textContent = 'Reset App';
+    alert('Failed to reset app. Please try again.');
+  } finally {
+    resetAppBtn.disabled = false;
+  }
+});
+
+// Uninstall app
+uninstallAppBtn.addEventListener('click', async () => {
+  const firstConfirm = confirm(
+    '⚠️ WARNING: This will permanently delete the P-Stream app and ALL associated data from your computer.\n\n' +
+      'This includes:\n' +
+      '• All app settings\n' +
+      '• All cookies and browsing data\n' +
+      '• All stored preferences\n\n' +
+      'This action CANNOT be undone.\n\n' +
+      'Are you absolutely sure you want to continue?',
+  );
+  if (!firstConfirm) return;
+  const secondConfirm = confirm(
+    'Final confirmation: Are you sure you want to uninstall P-Stream?\n\n' +
+      'The app will be removed from your computer and all data will be deleted.',
+  );
+  if (!secondConfirm) return;
+  uninstallAppBtn.disabled = true;
+  uninstallAppBtn.textContent = 'Uninstalling...';
+  try {
+    const result = await window.settings.uninstallApp();
+    if (result.success) {
+      alert(result.message || 'The app is being uninstalled. Please follow any additional instructions that appear.');
+    } else {
+      uninstallAppBtn.textContent = 'Uninstall App';
+      alert(
+        result.error ||
+          'Failed to uninstall the app. You may need to uninstall it manually through your system settings.',
+      );
+      uninstallAppBtn.disabled = false;
+    }
+  } catch (error) {
+    console.error('Failed to uninstall app:', error);
+    uninstallAppBtn.textContent = 'Uninstall App';
+    alert(
+      'An error occurred while trying to uninstall the app. You may need to uninstall it manually through your system settings.',
+    );
+    uninstallAppBtn.disabled = false;
+  }
+});
 
 // Load state when page loads
 loadState();

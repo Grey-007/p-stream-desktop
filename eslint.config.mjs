@@ -36,7 +36,7 @@ export default [
     },
   },
   {
-    files: ['renderer.js', 'preload.js', 'control-panel.js', 'updater.js'],
+    files: ['renderer.js', 'preload.js', 'settings.js', 'updater.js'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',

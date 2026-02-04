@@ -10,9 +10,6 @@ const warpProxy = require('./warp-proxy');
 // Settings store (will be initialized when app is ready)
 let store = null;
 
-// Control panel window reference
-let controlPanelWindow = null;
-
 // Settings window reference
 let settingsWindow = null;
 
@@ -634,7 +631,7 @@ function createWindow() {
   const shortcut = process.platform === 'darwin' ? 'Command+,' : 'Control+,';
   mainWindow.on('focus', () => {
     globalShortcut.register(shortcut, () => {
-      createControlPanelWindow();
+      openSettingsWindow();
     });
   });
   mainWindow.on('blur', () => {
@@ -648,39 +645,45 @@ function createWindow() {
   // view.webContents.openDevTools();
 }
 
-function createControlPanelWindow() {
-  // If window already exists, focus it
-  if (controlPanelWindow) {
-    controlPanelWindow.focus();
+function openSettingsWindow(parentWindow = null) {
+  if (settingsWindow) {
+    settingsWindow.focus();
     return;
   }
 
-  const isMac = (process.env.PLATFORM_OVERRIDE || process.platform) === 'darwin';
-  controlPanelWindow = new BrowserWindow({
+  const platform = process.env.PLATFORM_OVERRIDE || process.platform;
+  const isMac = platform === 'darwin';
+  const iconPath = path.join(__dirname, isMac ? 'app.icns' : 'logo.png');
+
+  settingsWindow = new BrowserWindow({
     width: 500,
-    height: 400,
+    height: 560,
     minWidth: 400,
-    minHeight: 300,
+    minHeight: 400,
+    parent: parentWindow || undefined,
+    modal: false,
+    resizable: true,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, isMac ? 'app.icns' : 'logo.png'),
     backgroundColor: '#1f2025',
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload-control-panel.js'),
+      preload: path.join(__dirname, 'preload-settings.js'),
     },
-    title: 'P-Stream Control Panel (DEVELOPERS ONLY)',
+    title: 'Settings',
     show: false,
   });
 
-  controlPanelWindow.loadFile(path.join(__dirname, 'control-panel.html'));
+  settingsWindow.setMenu(null);
+  settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
 
-  controlPanelWindow.once('ready-to-show', () => {
-    controlPanelWindow.show();
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow.show();
   });
 
-  controlPanelWindow.on('closed', () => {
-    controlPanelWindow = null;
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
   });
 }
 
@@ -735,8 +738,8 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
 
-  // Show dialog for automatic checks (startup) or when not a manual check from control panel
-  // Manual checks from control panel will show status in the control panel instead
+  // Show dialog for automatic checks (startup) or when not a manual check from settings
+  // Manual checks from settings will show status in the settings window instead
   if (!isManualCheck) {
     // Wait a bit for the window to be ready, especially on startup
     setTimeout(
@@ -850,7 +853,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('openControlPanel', () => {
-    createControlPanelWindow();
+    openSettingsWindow();
   });
 
   createWindow();
@@ -1201,40 +1204,7 @@ ipcMain.on('window-close', (event) => {
 
 ipcMain.on('open-settings', (event) => {
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
-  if (settingsWindow) {
-    settingsWindow.focus();
-    return;
-  }
-
-  const platform = process.env.PLATFORM_OVERRIDE || process.platform;
-  const isMac = platform === 'darwin';
-  const iconPath = path.join(__dirname, isMac ? 'app.icns' : 'logo.png');
-
-  settingsWindow = new BrowserWindow({
-    width: 500,
-    height: 400,
-    parent: parentWindow,
-    modal: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    autoHideMenuBar: true,
-    backgroundColor: '#1f2025',
-    icon: iconPath,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-settings.js'),
-    },
-    title: 'Settings',
-  });
-
-  settingsWindow.setMenu(null);
-  settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
-
-  settingsWindow.on('closed', () => {
-    settingsWindow = null;
-  });
+  openSettingsWindow(parentWindow);
 });
 
 ipcMain.on('theme-color', (event, color) => {
