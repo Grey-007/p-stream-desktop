@@ -1,6 +1,6 @@
 const { app, BrowserWindow, BrowserView, session, ipcMain, dialog, globalShortcut, shell } = require('electron');
 const path = require('path');
-const { handlers } = require('./ipc-handlers');
+const { handlers, setupInterceptors } = require('./ipc-handlers');
 const { autoUpdater } = require('electron-updater');
 const SimpleStore = require('./storage');
 const discordRPC = require('./discord-rpc');
@@ -148,6 +148,12 @@ function createWindow() {
 
   // Store reference to BrowserView globally
   mainBrowserView = view;
+
+  // Attach CORS bypass (extension-equivalent): add CORS headers to responses that match
+  // rules registered via prepareStream IPC from the page.
+  setupInterceptors(view.webContents.session, {
+    getStreamHostname: () => (store ? store.get('streamUrl', 'pstream.mov') : 'pstream.mov'),
+  });
 
   // Allow WebAuthn passkey flows for the current origin only
   const viewSession = view.webContents.session;
