@@ -1,3 +1,4 @@
+const warpLaunchToggle = document.getElementById('warp-launch-toggle');
 const warpToggle = document.getElementById('warp-toggle');
 const warpStatus = document.getElementById('warp-status');
 const discordToggle = document.getElementById('discord-rpc-toggle');
@@ -11,6 +12,14 @@ const uninstallAppBtn = document.getElementById('uninstall-app-btn');
 
 // Load initial state
 async function loadState() {
+  // Load WARP on launch state
+  try {
+    const warpLaunchEnabled = await window.settings.getWarpLaunchEnabled();
+    warpLaunchToggle.checked = warpLaunchEnabled;
+  } catch (error) {
+    console.error('Failed to load WARP on launch state:', error);
+  }
+
   // Load WARP VPN state
   try {
     const warpEnabled = await window.settings.getWarpEnabled();
@@ -82,6 +91,16 @@ async function updateWarpStatus() {
     warpStatus.textContent = '';
   }
 }
+
+// Handle WARP on launch toggle change
+warpLaunchToggle.addEventListener('change', async (event) => {
+  try {
+    await window.settings.setWarpLaunchEnabled(event.target.checked);
+  } catch (error) {
+    console.error('Failed to update WARP on launch state:', error);
+    warpLaunchToggle.checked = !event.target.checked;
+  }
+});
 
 // Handle WARP toggle change
 warpToggle.addEventListener('change', async (event) => {
