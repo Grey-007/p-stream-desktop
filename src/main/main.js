@@ -155,9 +155,13 @@ function createWindow() {
     getStreamHostname: () => (store ? store.get('streamUrl', 'pstream.mov') : 'pstream.mov'),
   });
 
-  // Allow WebAuthn passkey flows for the current origin only
+  // Allow WebAuthn passkey flows for the current origin only; allow fullscreen for the web player
   const viewSession = view.webContents.session;
   viewSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === 'fullscreen') {
+      callback(true);
+      return;
+    }
     if (!PASSKEY_PERMISSIONS.has(permission)) {
       callback(false);
       return;
@@ -179,6 +183,7 @@ function createWindow() {
   });
 
   viewSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    if (permission === 'fullscreen') return true;
     if (!PASSKEY_PERMISSIONS.has(permission)) return false;
     const topLevelUrl = webContents.getURL();
     return shouldAllowPasskeyRequest(requestingOrigin, topLevelUrl);
