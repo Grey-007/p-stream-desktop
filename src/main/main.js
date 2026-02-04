@@ -344,6 +344,7 @@ function createWindow() {
     // -3 = ERR_ABORTED (user navigated away or cancelled) — don't show error page
     if (errorCode === -3) return;
     const displayUrl = validatedURL || fullUrl;
+    const displayError = errorDescription || `ERR_${errorCode}`;
     const errorHtml = `
       <!DOCTYPE html>
       <html>
@@ -406,17 +407,147 @@ function createWindow() {
             .settings-btn:active {
               background: #3c45a5;
             }
+            .settings-btn.secondary {
+              background: #3f3f46;
+              margin-left: 8px;
+            }
+            .settings-btn.secondary:hover {
+              background: #52525b;
+            }
+            .warp-status {
+              margin: 2px 0 0 0;
+              padding: 0;
+              font-size: 12px;
+              line-height: 1.3;
+              min-height: 16px;
+            }
+            .error-detail {
+              margin-top: 8px;
+              font-size: 13px;
+              color: #f87171;
+              font-family: ui-monospace, monospace;
+            }
+            .warp-row {
+              margin-top: 20px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 12px;
+            }
+            .warp-toggle-wrap {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+            .warp-label {
+              font-size: 14px;
+              color: #e4e4e7;
+            }
+            .toggle {
+              position: relative;
+              width: 44px;
+              height: 24px;
+              background: #3f3f46;
+              border-radius: 12px;
+              cursor: pointer;
+              transition: background 0.2s;
+            }
+            .toggle.on {
+              background: #5865f2;
+            }
+            .toggle-knob {
+              position: absolute;
+              top: 2px;
+              left: 2px;
+              width: 20px;
+              height: 20px;
+              background: #fff;
+              border-radius: 50%;
+              transition: transform 0.2s;
+            }
+            .toggle.on .toggle-knob {
+              transform: translateX(20px);
+            }
+            .toggle.busy {
+              pointer-events: none;
+              opacity: 0.7;
+            }
           </style>
         </head>
         <body>
           <div class="error-box">
             <h1>Failed to connect</h1>
             <p>Could not load the page.</p>
+            <p class="error-detail">${displayError.replace(/</g, '&lt;')}</p>
             <p class="url">${displayUrl.replace(/</g, '&lt;')}</p>
-            <p class="hint">Try enabling Cloudflare WARP in settings.</p>
-            <button class="settings-btn" onclick="if(window.__PSTREAM_OPEN_SETTINGS__)window.__PSTREAM_OPEN_SETTINGS__()">Open Settings</button>
+            <p class="hint">Try Cloudflare WARP to bypass connection issues.</p>
+            <div class="warp-row">
+              <div class="warp-toggle-wrap">
+                <span class="warp-label">Cloudflare WARP</span>
+                <div id="warp-toggle" class="toggle" role="button" tabindex="0" aria-label="Toggle WARP"><span class="toggle-knob"></span></div>
+              </div>
+              <p id="warp-status" class="warp-status" style="color:#71717a;"></p>
+              <button class="settings-btn secondary" onclick="if(window.__PSTREAM_OPEN_SETTINGS__)window.__PSTREAM_OPEN_SETTINGS__()">Open Settings</button>
+            </div>
             <p class="hint" style="margin-top: 16px;">You can reload with Ctrl+R (or Cmd+R on Mac).</p>
           </div>
+          <script>
+            (function() {
+              var toggleEl = document.getElementById('warp-toggle');
+              var statusEl = document.getElementById('warp-status');
+              function setToggle(on, busy) {
+                toggleEl.classList.toggle('on', on);
+                toggleEl.classList.toggle('busy', busy);
+              }
+              function setStatus(text, color) {
+                statusEl.textContent = text || '';
+                statusEl.style.color = color || '#71717a';
+              }
+              async function refreshWarpStatus() {
+                if (!window.__PSTREAM_GET_WARP_STATUS__) return;
+                try {
+                  var status = await window.__PSTREAM_GET_WARP_STATUS__();
+                  setToggle(!!status.enabled, false);
+                  if (status.enabled && status.proxyHost)
+                    setStatus('Connected via ' + status.proxyHost + ':' + (status.proxyPort || ''), '#4ade80');
+                  else
+                    setStatus('Disabled', '#71717a');
+                } catch (e) {
+                  setStatus('', '#71717a');
+                }
+              }
+              async function onToggleClick() {
+                if (!window.__PSTREAM_SET_WARP_ENABLED__ || !window.__PSTREAM_GET_WARP_STATUS__ || !window.__PSTREAM_RELOAD_STREAM_PAGE__) return;
+                var currentlyOn = toggleEl.classList.contains('on');
+                var targetOn = !currentlyOn;
+                setToggle(targetOn, true);
+                if (targetOn) setStatus('Connecting...', '#fbbf24');
+                else setStatus('Disconnecting...', '#fbbf24');
+                try {
+                  var result = await window.__PSTREAM_SET_WARP_ENABLED__(targetOn);
+                  if (result && result.success) {
+                    setToggle(targetOn, false);
+                    if (targetOn) {
+                      setStatus('Connected. Reloading page...', '#4ade80');
+                      await window.__PSTREAM_RELOAD_STREAM_PAGE__();
+                    } else {
+                      setStatus('Disabled. Reloading page...', '#71717a');
+                      await window.__PSTREAM_RELOAD_STREAM_PAGE__();
+                    }
+                    return;
+                  }
+                  setToggle(currentlyOn, false);
+                  setStatus(result && result.error ? result.error : 'Failed', '#f87171');
+                } catch (e) {
+                  setToggle(currentlyOn, false);
+                  setStatus(e.message || 'Failed', '#f87171');
+                }
+              }
+              toggleEl.addEventListener('click', onToggleClick);
+              toggleEl.addEventListener('keydown', function(e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onToggleClick(); } });
+              refreshWarpStatus();
+            })();
+          </script>
         </body>
       </html>
     `;
@@ -1368,6 +1499,15 @@ ipcMain.handle('set-warp-enabled', async (event, enabled) => {
     console.error('Failed to toggle WARP proxy:', error);
     return { success: false, error: error.message };
   }
+});
+
+// Reload the stream page (used from the "failed to load" error page after turning on WARP)
+ipcMain.handle('reload-stream-page', () => {
+  if (!mainBrowserView || !mainBrowserView.webContents) return;
+  const streamUrl = store ? store.get('streamUrl', 'pstream.mov') : 'pstream.mov';
+  const fullUrl =
+    streamUrl.startsWith('http://') || streamUrl.startsWith('https://') ? streamUrl : `https://${streamUrl}/`;
+  mainBrowserView.webContents.loadURL(fullUrl);
 });
 
 // Cleanup WARP proxy on app quit

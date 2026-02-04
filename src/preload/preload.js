@@ -62,6 +62,13 @@ contextBridge.exposeInMainWorld('__PSTREAM_OPEN_DEVTOOLS__', () => {
   ipcRenderer.send('open-embed-devtools');
 });
 
+// Expose WARP controls for the "failed to load" error page (turn on WARP, then reload)
+contextBridge.exposeInMainWorld('__PSTREAM_SET_WARP_ENABLED__', (enabled) =>
+  ipcRenderer.invoke('set-warp-enabled', enabled),
+);
+contextBridge.exposeInMainWorld('__PSTREAM_GET_WARP_STATUS__', () => ipcRenderer.invoke('get-warp-status'));
+contextBridge.exposeInMainWorld('__PSTREAM_RELOAD_STREAM_PAGE__', () => ipcRenderer.invoke('reload-stream-page'));
+
 // When the web app requests desktop settings (e.g. menu → Desktop), open the settings panel
 window.addEventListener('pstream-desktop-settings', () => {
   ipcRenderer.send('open-settings');
