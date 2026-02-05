@@ -181,7 +181,6 @@ async function setActivity(title, mediaMetadata = null) {
     await clearActivitySafe();
     return;
   }
-  console.log(mediaMetadata);
 
   // If no media metadata, show default browsing activity
   if (!mediaMetadata) {
@@ -270,7 +269,6 @@ function initialize(settingsStore) {
 
   ipcMain.handle('updateMediaMetadata', async (event, data) => {
     try {
-      //console.log(data);
       const hasMetadata = data?.metadata && (data.metadata.title || data.metadata.artist);
       const hasProgress = data?.progress && (data.progress.currentTime != null || data.progress.duration != null);
 
