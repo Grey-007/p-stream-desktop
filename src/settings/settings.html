@@ -20,11 +20,21 @@
               <p class="settings__setting-description" id="version-text">Loading...</p>
             </div>
             <div class="settings__button-group">
-              <button id="update-now-btn" class="settings__button settings__button--primary" hidden>
-                Update now
-              </button>
+              <button id="update-now-btn" class="settings__button settings__button--primary" hidden>Update now</button>
               <button id="check-updates-btn" class="settings__button">Check for Updates</button>
             </div>
+          </div>
+        </div>
+        <div class="settings__section">
+          <div class="settings__setting">
+            <div class="settings__setting-info">
+              <h3 class="settings__setting-title">Enable Cloudflare WARP VPN on Launch</h3>
+              <p class="settings__setting-description">Automatically enable Cloudflare WARP VPN when the app starts</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="warp-launch-toggle" class="toggle__input" />
+              <span class="toggle__slider"></span>
+            </label>
           </div>
         </div>
         <div class="settings__section">
@@ -81,13 +91,9 @@
           <div class="settings__setting">
             <div class="settings__setting-info">
               <h3 class="settings__setting-title">Uninstall App</h3>
-              <p class="settings__setting-description">
-                Remove the app and all associated data from your computer
-              </p>
+              <p class="settings__setting-description">Remove the app and all associated data from your computer</p>
             </div>
-            <button id="uninstall-app-btn" class="settings__button settings__button--danger">
-              Uninstall App
-            </button>
+            <button id="uninstall-app-btn" class="settings__button settings__button--danger">Uninstall App</button>
           </div>
         </div>
       </div>

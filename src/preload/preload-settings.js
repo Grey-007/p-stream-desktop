@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('settings', {
   // WARP VPN
+  setWarpLaunchEnabled: (enabled) => ipcRenderer.invoke('set-warp-launch-enabled', enabled),
+  getWarpLaunchEnabled: () => ipcRenderer.invoke('get-warp-launch-enabled'),
   getWarpEnabled: () => ipcRenderer.invoke('get-warp-enabled'),
   setWarpEnabled: (enabled) => ipcRenderer.invoke('set-warp-enabled', enabled),
   getWarpStatus: () => ipcRenderer.invoke('get-warp-status'),

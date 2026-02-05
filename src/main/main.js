@@ -985,6 +985,7 @@ app.whenReady().then(async () => {
     defaults: {
       discordRPCEnabled: true,
       streamUrl: 'pstream.mov',
+      warpLaunchEnabled: false,
     },
   });
 
@@ -1003,6 +1004,20 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+
+  // Auto-enable WARP proxy if configured
+  if (store.get('warpLaunchEnabled')) {
+    try {
+      const result = await warpProxy.enableWarpProxy();
+      if (result.success && mainBrowserView?.webContents) {
+        const proxyConfig = warpProxy.getProxyConfig();
+        await mainBrowserView.webContents.session.setProxy(proxyConfig);
+        console.log('WARP auto-enabled');
+      }
+    } catch (err) {
+      console.error('WARP auto-enable failed:', err);
+    }
+  }
 
   // IPC handler for manual update check
   ipcMain.handle('checkForUpdates', async () => {
@@ -1444,6 +1459,11 @@ ipcMain.handle('reset-app', async () => {
 });
 
 // WARP VPN IPC handlers
+ipcMain.handle('get-warp-launch-enabled', () => {
+  if (!store) return false;
+  return store.get('warpLaunchEnabled', false);
+});
+
 ipcMain.handle('get-warp-enabled', () => {
   return warpProxy.isWarpProxyEnabled();
 });
@@ -1458,6 +1478,17 @@ ipcMain.handle('get-warp-status', () => {
     };
   }
   return { enabled: false };
+});
+
+ipcMain.handle('set-warp-launch-enabled', async (event, enabled) => {
+  try {
+    if (!store) return false;
+    store.set('warpLaunchEnabled', enabled);
+    return true;
+  } catch (error) {
+    console.error('Failed to set WARP launch setting:', error);
+    return false;
+  }
 });
 
 ipcMain.handle('set-warp-enabled', async (event, enabled) => {
