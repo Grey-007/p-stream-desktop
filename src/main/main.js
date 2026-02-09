@@ -1045,7 +1045,11 @@ ipcMain.handle('set-volume-boost', async (event, value) => {
     return { success: true, value: numeric };
   } catch (error) {
     console.error('Failed to set volume boost:', error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: 'Failed to update volume boost. Please try again.',
+      code: 'SET_VOLUME_BOOST_FAILED',
+    };
   }
 });
 

@@ -204,7 +204,8 @@ const scanAndHookMediaElements = () => {
   try {
     const mediaEls = document.querySelectorAll('audio, video');
     mediaEls.forEach((el) => hookMediaElementForBoost(el));
-  } catch {
+  } catch (error) {
+    console.warn('[P-Stream] Failed to scan media elements for volume boost:', error);
   }
 };
 

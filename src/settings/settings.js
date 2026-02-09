@@ -198,7 +198,7 @@ hardwareAccelToggle.addEventListener('change', async (event) => {
 
 // Handle volume boost slider change
 if (volumeBoostSlider) {
-  volumeBoostSlider.addEventListener('input', async (event) => {
+  volumeBoostSlider.addEventListener('input', (event) => {
     const raw = Number(event.target.value);
     let numeric = Number.isFinite(raw) && raw > 0 ? raw : 1.0;
     numeric = Math.min(Math.max(numeric, 1.0), 10.0);
@@ -206,6 +206,12 @@ if (volumeBoostSlider) {
     if (volumeBoostLabel) {
       volumeBoostLabel.textContent = `${numeric.toFixed(1)}×`;
     }
+  });
+
+  volumeBoostSlider.addEventListener('change', async (event) => {
+    const raw = Number(event.target.value);
+    let numeric = Number.isFinite(raw) && raw > 0 ? raw : 1.0;
+    numeric = Math.min(Math.max(numeric, 1.0), 10.0);
 
     try {
       const result = await window.settings.setVolumeBoost(numeric);
