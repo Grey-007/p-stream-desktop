@@ -1013,6 +1013,46 @@ ipcMain.handle('set-hardware-acceleration', async (event, enabled) => {
   }
 });
 
+ipcMain.handle('get-volume-boost', () => {
+  if (!store) return 1.0;
+
+  const raw = Number(store.get('volumeBoost', 1.0));
+  if (!Number.isFinite(raw) || raw <= 0) return 1.0;
+
+  const clamped = Math.min(Math.max(raw, 1.0), 10.0);
+  return clamped;
+});
+
+ipcMain.handle('set-volume-boost', async (event, value) => {
+  try {
+    if (!store) {
+      return { success: false, error: 'Settings store not available' };
+    }
+
+    let numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      numeric = 1.0;
+    }
+
+    numeric = Math.min(Math.max(numeric, 1.0), 10.0);
+
+    store.set('volumeBoost', numeric);
+
+    if (mainBrowserView && mainBrowserView.webContents) {
+      mainBrowserView.webContents.send('volume-boost-changed', numeric);
+    }
+
+    return { success: true, value: numeric };
+  } catch (error) {
+    console.error('Failed to set volume boost:', error);
+    return {
+      success: false,
+      error: 'Failed to update volume boost. Please try again.',
+      code: 'SET_VOLUME_BOOST_FAILED',
+    };
+  }
+});
+
 app.whenReady().then(async () => {
   // Set the app name
   app.setName('P-Stream');
@@ -1032,6 +1072,7 @@ app.whenReady().then(async () => {
       streamUrl: 'pstream.mov',
       hardwareAcceleration: true,
       warpLaunchEnabled: false,
+      volumeBoost: 1.0,
     },
   });
 

@@ -7,6 +7,7 @@ class SimpleStore {
     this.defaults = options.defaults || {};
     this.filePath = path.join(app.getPath('userData'), 'settings.json');
     this.data = this.load();
+    this._saveTimer = null;
   }
 
   load() {
@@ -22,11 +23,18 @@ class SimpleStore {
   }
 
   save() {
-    try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf8');
-    } catch (error) {
-      console.error('Error saving settings:', error);
+    if (this._saveTimer) {
+      return;
     }
+
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      fs.writeFile(this.filePath, JSON.stringify(this.data, null, 2), 'utf8', (error) => {
+        if (error) {
+          console.error('Error saving settings:', error);
+        }
+      });
+    }, 100);
   }
 
   get(key, defaultValue) {

@@ -10,6 +10,8 @@ const saveUrlBtn = document.getElementById('save-url-btn');
 const resetAppBtn = document.getElementById('reset-app-btn');
 const uninstallAppBtn = document.getElementById('uninstall-app-btn');
 const hardwareAccelToggle = document.getElementById('hardware-accel-toggle');
+const volumeBoostSlider = document.getElementById('volume-boost-slider');
+const volumeBoostLabel = document.getElementById('volume-boost-label');
 
 // Load initial state
 async function loadState() {
@@ -61,6 +63,22 @@ async function loadState() {
     hardwareAccelToggle.checked = hwAccel;
   } catch (error) {
     console.error('Failed to load hardware acceleration state:', error);
+  }
+
+  // Load volume boost
+  try {
+    const boost = await window.settings.getVolumeBoost();
+    let numeric = Number(boost);
+    if (!Number.isFinite(numeric) || numeric <= 0) numeric = 1.0;
+    numeric = Math.min(Math.max(numeric, 1.0), 10.0);
+    if (volumeBoostSlider) {
+      volumeBoostSlider.value = numeric.toString();
+    }
+    if (volumeBoostLabel) {
+      volumeBoostLabel.textContent = `${numeric.toFixed(1)}×`;
+    }
+  } catch (error) {
+    console.error('Failed to load volume boost:', error);
   }
 
   // Check if we're in development mode
@@ -177,6 +195,40 @@ hardwareAccelToggle.addEventListener('change', async (event) => {
     hardwareAccelToggle.disabled = false;
   }
 });
+
+// Handle volume boost slider change
+if (volumeBoostSlider) {
+  volumeBoostSlider.addEventListener('input', (event) => {
+    const raw = Number(event.target.value);
+    let numeric = Number.isFinite(raw) && raw > 0 ? raw : 1.0;
+    numeric = Math.min(Math.max(numeric, 1.0), 10.0);
+
+    if (volumeBoostLabel) {
+      volumeBoostLabel.textContent = `${numeric.toFixed(1)}×`;
+    }
+  });
+
+  volumeBoostSlider.addEventListener('change', async (event) => {
+    const raw = Number(event.target.value);
+    let numeric = Number.isFinite(raw) && raw > 0 ? raw : 1.0;
+    numeric = Math.min(Math.max(numeric, 1.0), 10.0);
+
+    try {
+      const result = await window.settings.setVolumeBoost(numeric);
+      if (result && result.success && typeof result.value === 'number') {
+        const applied = Math.min(Math.max(result.value, 1.0), 10.0);
+        if (volumeBoostSlider.value !== applied.toString()) {
+          volumeBoostSlider.value = applied.toString();
+        }
+        if (volumeBoostLabel) {
+          volumeBoostLabel.textContent = `${applied.toFixed(1)}×`;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update volume boost:', error);
+    }
+  });
+}
 
 // Handle update check button
 checkUpdatesBtn.addEventListener('click', async () => {

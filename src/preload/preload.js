@@ -132,6 +132,122 @@ const observeThemeChanges = () => {
   }
 };
 
+let pstreamAudioContext = null;
+let pstreamMasterGain = null;
+let pstreamCurrentBoost = 1.0;
+
+const applyBoostValue = (rawValue) => {
+  let value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) value = 1.0;
+  value = Math.min(Math.max(value, 1.0), 10.0);
+  pstreamCurrentBoost = value;
+  if (pstreamMasterGain) {
+    pstreamMasterGain.gain.value = pstreamCurrentBoost;
+  }
+};
+
+const ensureAudioGraph = () => {
+  if (pstreamAudioContext && pstreamMasterGain) return;
+
+  const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextImpl) {
+    return;
+  }
+
+  try {
+    pstreamAudioContext = new AudioContextImpl();
+    pstreamMasterGain = pstreamAudioContext.createGain();
+    pstreamMasterGain.gain.value = pstreamCurrentBoost;
+    pstreamMasterGain.connect(pstreamAudioContext.destination);
+  } catch (error) {
+    console.warn('[P-Stream] Failed to initialise audio context for volume boost:', error);
+    pstreamAudioContext = null;
+    pstreamMasterGain = null;
+  }
+};
+
+const hookMediaElementForBoost = (el) => {
+  if (!el || el.__pstreamBoosted) return;
+
+  ensureAudioGraph();
+  if (!pstreamAudioContext || !pstreamMasterGain) return;
+
+  try {
+    const sourceNode = pstreamAudioContext.createMediaElementSource(el);
+    const elementGain = pstreamAudioContext.createGain();
+    const initialVolume = typeof el.volume === 'number' ? el.volume : 1.0;
+    elementGain.gain.value = initialVolume;
+
+    sourceNode.connect(elementGain).connect(pstreamMasterGain);
+
+    const resumeContext = () => {
+      if (pstreamAudioContext && pstreamAudioContext.state === 'suspended') {
+        pstreamAudioContext.resume().catch(() => {});
+      }
+    };
+
+    el.addEventListener('play', resumeContext);
+
+    const onVolumeChange = () => {
+      const vol = typeof el.volume === 'number' ? el.volume : 1.0;
+      elementGain.gain.value = vol;
+    };
+    el.addEventListener('volumechange', onVolumeChange);
+
+    el.__pstreamBoosted = true;
+  } catch (error) {
+    console.warn('[P-Stream] Failed to hook media element for volume boost:', error);
+  }
+};
+
+const scanAndHookMediaElements = () => {
+  try {
+    const mediaEls = document.querySelectorAll('audio, video');
+    mediaEls.forEach((el) => hookMediaElementForBoost(el));
+  } catch (error) {
+    console.warn('[P-Stream] Failed to scan media elements for volume boost:', error);
+  }
+};
+
+ipcRenderer.on('volume-boost-changed', (_event, value) => {
+  applyBoostValue(value);
+});
+
+const setupVolumeBoost = async () => {
+  try {
+    const initialBoost = await ipcRenderer.invoke('get-volume-boost');
+    applyBoostValue(initialBoost);
+  } catch (error) {
+    console.warn('[P-Stream] Failed to load initial volume boost:', error);
+  }
+
+  scanAndHookMediaElements();
+
+  try {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches('audio, video')) {
+            hookMediaElementForBoost(node);
+          }
+          const nested = node.querySelectorAll && node.querySelectorAll('audio, video');
+          if (nested && nested.length) {
+            nested.forEach((el) => hookMediaElementForBoost(el));
+          }
+        }
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  } catch (error) {
+    console.warn('[P-Stream] Failed to observe media elements for volume boost:', error);
+  }
+};
+
 window.addEventListener('DOMContentLoaded', () => {
   observeThemeChanges();
   const intervalId = setInterval(sendThemeColor, 10000);
@@ -142,4 +258,6 @@ window.addEventListener('DOMContentLoaded', () => {
     },
     { once: true },
   );
+
+  setupVolumeBoost();
 });

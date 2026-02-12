@@ -24,4 +24,7 @@ contextBridge.exposeInMainWorld('settings', {
   getHardwareAcceleration: () => ipcRenderer.invoke('get-hardware-acceleration'),
   setHardwareAcceleration: (enabled) => ipcRenderer.invoke('set-hardware-acceleration', enabled),
   restartApp: () => ipcRenderer.invoke('restartApp'),
+  // Volume boost
+  getVolumeBoost: () => ipcRenderer.invoke('get-volume-boost'),
+  setVolumeBoost: (value) => ipcRenderer.invoke('set-volume-boost', value),
 });
