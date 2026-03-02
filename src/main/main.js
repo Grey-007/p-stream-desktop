@@ -748,16 +748,141 @@ function createWindow() {
     view.webContents.executeJavaScript(script).catch(() => {});
   };
 
+  // Inject fix for subtitles not showing in fullscreen.
+  // In Electron's BrowserView, Chromium's "top layer" model means that subtitle overlay
+  // elements positioned outside the fullscreen element are not painted. This injection:
+  //   1. Adds CSS to ensure native <track>-based subtitle containers are always visible.
+  //   2. Listens for fullscreenchange and moves common subtitle container elements inside
+  //      the fullscreen element, then restores their original position on exit.
+  const injectSubtitleFullscreenFix = () => {
+    const script = `
+      (function() {
+        if (window.__pstreamSubtitleFixInjected) return;
+
+        // --- CSS: ensure native WebVTT text-track containers are always visible ---
+        // Use documentElement as a fallback in case <head> doesn't exist yet
+        // (did-navigate can fire before the DOM is fully parsed).
+        const style = document.createElement('style');
+        style.textContent = \`
+          video::-webkit-media-text-track-container,
+          video::-webkit-media-text-track-display,
+          video::-webkit-media-text-track-background,
+          video::cue {
+            display: block !important;
+            visibility: visible !important;
+            overflow: visible !important;
+          }
+        \`;
+        (document.head || document.documentElement).appendChild(style);
+
+        // Set the guard only after the style is safely inserted so a failed early
+        // injection doesn't permanently block a later retry.
+        window.__pstreamSubtitleFixInjected = true;
+
+        // --- JS: move custom subtitle overlays inside the fullscreen element ---
+        // Build a candidate set at injection time using a MutationObserver so that
+        // fullscreen transitions only iterate the (small) set of known overlay elements
+        // rather than running 13 querySelectorAll scans (including expensive [class*=…]
+        // substring scans) across an unpredictably large DOM on every fullscreen enter.
+        const COMBINED_SELECTOR = [
+          '.vjs-text-track-display',       // Video.js
+          '.shaka-text-container',         // Shaka Player
+          '.plyr__captions',               // Plyr
+          '.jw-captions',                  // JW Player
+          '.fp-captions',                  // Flowplayer
+          '.mejs-captions-layer',          // MediaElement.js
+          '.html5-video-subtitles',        // YouTube-style players
+          '[class*="subtitle-container"]',
+          '[class*="subtitles-container"]',
+          '[class*="caption-container"]',
+          '[class*="captions-container"]',
+          '[class*="text-track-container"]',
+        ].join(',');
+
+        // Seed the candidate set with elements already in the DOM.
+        const candidates = new Set(document.querySelectorAll(COMBINED_SELECTOR));
+
+        // Keep the set up-to-date as the player injects its overlay elements.
+        const candidateObserver = new MutationObserver((mutations) => {
+          for (const { addedNodes } of mutations) {
+            for (const node of addedNodes) {
+              if (node.nodeType !== 1) continue;
+              try {
+                if (node.matches(COMBINED_SELECTOR)) candidates.add(node);
+                node.querySelectorAll(COMBINED_SELECTOR).forEach((el) => candidates.add(el));
+              } catch (e) {}
+            }
+          }
+        });
+        candidateObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+        // Map of moved elements -> { parent, nextSibling } for restoration
+        const movedElements = new Map();
+
+        const moveSubtitlesIntoFullscreen = (fsEl) => {
+          candidates.forEach((el) => {
+            if (!fsEl.contains(el)) {
+              movedElements.set(el, { parent: el.parentElement, nextSibling: el.nextSibling });
+              fsEl.appendChild(el);
+            }
+          });
+        };
+
+        const restoreSubtitles = () => {
+          movedElements.forEach(({ parent, nextSibling }, el) => {
+            try {
+              if (parent) {
+                if (nextSibling && nextSibling.parentNode === parent) {
+                  parent.insertBefore(el, nextSibling);
+                } else {
+                  parent.appendChild(el);
+                }
+              }
+            } catch (e) {}
+          });
+          movedElements.clear();
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+          if (document.fullscreenElement) {
+            moveSubtitlesIntoFullscreen(document.fullscreenElement);
+          } else {
+            restoreSubtitles();
+          }
+        });
+
+        // Also handle webkit-prefixed fullscreen (belt-and-suspenders for older Chromium)
+        document.addEventListener('webkitfullscreenchange', () => {
+          const fsEl = document.webkitFullscreenElement || document.fullscreenElement;
+          if (fsEl) {
+            moveSubtitlesIntoFullscreen(fsEl);
+          } else {
+            restoreSubtitles();
+          }
+        });
+
+        // If already in fullscreen when this script runs (e.g. inject fired after the
+        // fullscreenchange event), apply the fix immediately without waiting for an event.
+        const currentFs = document.fullscreenElement || document.webkitFullscreenElement;
+        if (currentFs) moveSubtitlesIntoFullscreen(currentFs);
+      })();
+    `;
+    view.webContents.executeJavaScript(script).catch(console.error);
+  };
+
   // Inject media watcher when page loads
   view.webContents.on('did-finish-load', () => {
     injectMediaWatcher();
     injectDevToolsShortcut();
+    injectSubtitleFullscreenFix();
   });
 
   // Also inject on navigation
   view.webContents.on('did-navigate', () => {
     setTimeout(injectMediaWatcher, 1000);
     setTimeout(injectDevToolsShortcut, 100);
+    // Small delay so the DOM (including <head>) is available before the style injection.
+    setTimeout(injectSubtitleFullscreenFix, 200);
   });
 
   // Update title when page title changes
