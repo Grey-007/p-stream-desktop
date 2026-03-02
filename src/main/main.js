@@ -242,6 +242,15 @@ function createWindow() {
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
 
+  // Redirect focus to the BrowserView (the web page) when the main window is focused
+  // This ensures that keyboard shortcuts (like Space for pause/play) work correctly
+  // after alt-tabbing back to the app, instead of triggering window control buttons.
+  mainWindow.on('focus', () => {
+    if (view && view.webContents) {
+      view.webContents.focus();
+    }
+  });
+
   // Aggressively hide menu bar in fullscreen - set up interval to continuously check
   let fullscreenMenuBarInterval = null;
 
