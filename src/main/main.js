@@ -13,6 +13,7 @@ const PRELOAD = path.join(__dirname, '..', 'preload');
 const RENDERER = path.join(__dirname, '..', 'renderer');
 const SETTINGS = path.join(__dirname, '..', 'settings');
 const SETUP = path.join(__dirname, '..', 'setup');
+const SETUP_PRELOAD = path.join(__dirname, '..', 'preload', 'preload-setup.js');
 
 // Settings store (will be initialized when app is ready)
 const store = new SimpleStore({
@@ -27,6 +28,9 @@ const store = new SimpleStore({
 
 // Settings window reference
 let settingsWindow = null;
+
+// Setup window reference
+let setupWindow = null;
 
 // BrowserView reference (for reset functionality)
 let mainBrowserView = null;
@@ -339,7 +343,7 @@ function createWindow() {
   // Get the saved stream URL
   const streamUrl = store ? store.get('streamUrl') : null;
   if (!streamUrl) {
-    mainBrowserView.webContents.loadFile(path.join(SETUP, 'setup.html'));
+    createSetupWindow();
     return;
   }
 
@@ -998,6 +1002,46 @@ function openSettingsWindow(parentWindow = null) {
   });
 }
 
+function createSetupWindow() {
+  if (setupWindow) {
+    setupWindow.focus();
+    return;
+  }
+
+  const platform = process.env.PLATFORM_OVERRIDE || process.platform;
+  const isMac = platform === 'darwin';
+  const iconPath = path.join(ROOT, isMac ? 'app.icns' : 'logo.png');
+
+  setupWindow = new BrowserWindow({
+    width: 600,
+    height: 400,
+    minWidth: 400,
+    minHeight: 300,
+    resizable: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#1f2025',
+    icon: iconPath,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: SETUP_PRELOAD,
+    },
+    title: 'P-Stream Setup',
+    show: false,
+  });
+
+  setupWindow.setMenu(null);
+  setupWindow.loadFile(path.join(SETUP, 'setup.html'));
+
+  setupWindow.once('ready-to-show', () => {
+    setupWindow.show();
+  });
+
+  setupWindow.on('closed', () => {
+    setupWindow = null;
+  });
+}
+
 // Auto-updater configuration
 autoUpdater.autoDownload = false; // Don't auto-download, users download manually
 autoUpdater.autoInstallOnAppQuit = false; // Don't auto-install, users install manually
@@ -1644,6 +1688,47 @@ ipcMain.handle('set-stream-url', async (event, url) => {
   discordRPC.updateActivity();
 
   return true;
+});
+
+// IPC handler for saving the domain from the setup window
+ipcMain.handle('save-domain', async (event, domain) => {
+  try {
+    if (!store) {
+      throw new Error('Settings store not available');
+    }
+
+    let normalizedDomain = domain.trim();
+
+    if (!normalizedDomain || normalizedDomain.length === 0) {
+      throw new Error('Domain cannot be empty');
+    }
+
+    // Basic validation: ensure it looks like a domain or IP
+    if (!normalizedDomain.includes('.') && !normalizedDomain.match(/^\d{1,3}(\.\d{1,3}){3}$/)) {
+      throw new Error('Please enter a valid domain or IP address (e.g., pstream.example.com or 192.168.1.1)');
+    }
+
+    store.set('streamUrl', normalizedDomain);
+
+    // Close the setup window
+    if (setupWindow) {
+      setupWindow.close();
+    }
+
+    // Load the stream URL into the main BrowserView
+    if (mainBrowserView && mainBrowserView.webContents) {
+      const fullUrl =
+        normalizedDomain.startsWith('http://') || normalizedDomain.startsWith('https://')
+          ? normalizedDomain
+          : `https://${normalizedDomain}/`;
+      mainBrowserView.webContents.loadURL(fullUrl);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to save domain:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // IPC handler for resetting the app
